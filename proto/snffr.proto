@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package snffr;
+
+// Ensure Go can generate the package correctly
+option go_package = "snffr/manager/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// --- MESSAGES ---
+
+// The metadata for a single captured packet
+message PacketReport {
+  string agent_id = 1;
+  string src_ip = 2;
+  string dst_ip = 3;
+  uint32 src_port = 4;
+  uint32 dst_port = 5;
+  string protocol = 6;     // e.g., "TCP", "UDP", "ICMP"
+  uint32 length = 7;       // Size of the packet in bytes
+  bytes payload_peek = 8;  // First few bytes for signature matching
+  google.protobuf.Timestamp timestamp = 9;
+}
+
+// A command sent from the Manager to the Agent
+message ActionCommand {
+  enum ActionType {
+    BLOCK = 0;
+    RATE_LIMIT = 1;
+    ALLOW = 2;
+  }
+  
+  ActionType action = 1;
+  string target_ip = 2;
+  string reason = 3;
+  uint32 duration_seconds = 4; // How long to keep the block active
+}
+
+// --- SERVICES ---
+
+service SnifferService {
+  // Bidirectional streaming: 
+  // Agent sends a stream of PacketReports
+  // Manager sends a stream of ActionCommands
+  rpc Monitor(stream PacketReport) returns (stream ActionCommand);
+}
