@@ -1,0 +1,17 @@
+# Rust
+target/
+**/target/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Temp
+temp.md
