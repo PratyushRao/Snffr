@@ -1,41 +1,33 @@
-# How to do Stuff
-### Delete this file before making the project public!!!
+# Roadmap: Distributed gRPC Integration
 
-We'll split the project into 3 sections - agent, manager, and dashboard. I think the dashboard takes least priority for now since its the easiest. This is the file structure for now:
+This roadmap outlines the steps to connect the Rust Agent to the Go Manager using gRPC, forming the core of the distributed architecture.
 
-```
-snffr/
-├── docker-compose.yml
-├── proto/
-│   └── snffr.proto             # Protobuf definitions for gRPC communication
-├── agent/                      # --- RUST AGENT ---
-│   ├── Cargo.toml
-│   ├── src/
-│   │   ├── main.rs             # Entry point: initializes capture & gRPC
-│   │   ├── capture.rs          # libpcap / pcap logic
-│   │   ├── filter.rs           # local traffic pre-processing
-│   │   └── responder.rs        # iptables / nftables stuff
-│   └── Dockerfile
-├── manager/                    # --- GO MANAGER ---
-│   ├── go.mod
-│   ├── main.go
-│   ├── internal/
-│   │   ├── grpc_server/        # Receives data from Agents
-│   │   ├── rule_engine/        # Signature & threshold matching
-│   │   └── ws_hub/             # WebSocket logic for the Dashboard
-│   └── Dockerfile
-└── dashboard/
-    ├── package.json
-    ├── src/
-    │   ├── components/         # All the fun stuff
-    │   ├── hooks/              # WebSockets here
-    │   └── types/              # TS interfaces matching the Protobufs
-    └── Dockerfile
-```
+## Phase 1: Go Manager gRPC Setup
+*   **Goal:** Generate Go protobuf code and start the gRPC listener.
+*   **Tasks:**
+    1.  Install `protoc` and the Go plugins (`protoc-gen-go`, `protoc-gen-go-grpc`).
+    2.  Run `protoc` to generate Go code from `proto/snffr.proto`.
+    3.  Implement the `SnifferServiceServer` interface in `manager/internal/grpc_server`.
+    4.  Update `manager/main.go` to register the service and log incoming `PacketReport` streams.
 
-I started by making snffr.proto first. It's a **[protocol buffer](protobuf.dev/overview/)** schema, which is basically a data serliazation/deserialization standard set by Google gRPC for communication. (imagine JSON if it was actually good). For now I'll just paste whatever Gemini spits out in snffr.proto because im not smart enough to write one on my own.
+## Phase 2: Rust Agent gRPC Setup
+*   **Goal:** Generate Rust protobuf code and establish a client connection.
+*   **Tasks:**
+    1.  Add `tonic`, `prost`, and `tokio` dependencies to the Agent's `Cargo.toml`.
+    2.  Update `agent/build.rs` to compile the `snffr.proto` file into Rust code during the build process.
+    3.  Initialize a Tokio async runtime in `agent/src/main.rs`.
+    4.  Create a gRPC client channel connecting to `localhost:50051` (the Manager).
 
-Next most important thing is the agent, these guys basically keep watching whatevers going on and send any potential threats to manager. We'll use Rust for this. 
-...(to be continued)
+## Phase 3: The Data Pipeline
+*   **Goal:** Stream parsed packets from the capture engine to the Manager.
+*   **Tasks:**
+    1.  Bridge the synchronous `libpcap` thread with the asynchronous `tonic` gRPC client using Tokio channels (`tokio::sync::mpsc`).
+    2.  In the `parser.rs` processing loop, map the `ParsedPacket` struct to the generated Protobuf `PacketReport` message.
+    3.  Call the `Monitor` RPC method to send a continuous stream of `PacketReport` messages to the Go Manager.
 
-As for the manager, we'll be using a gRPC server to stay connected to everything and goroutines for concurrency. We can start by checking for SYN Floods and Port Scans initially, then add more attack signatures later. This part of the project is gonna get massive.
+## Phase 4: Testing & Verification
+*   **Goal:** Confirm end-to-end communication.
+*   **Tasks:**
+    1.  Start the Go Manager.
+    2.  Start the Rust Agent (with `sudo` for pcap).
+    3.  Verify that the Go Manager's console successfully prints out traffic captured by the Rust Agent in real-time.
