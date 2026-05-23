@@ -1,14 +1,7 @@
+use crate::types::PacketData;
 use crossbeam_channel::Sender;
 use pcap::{Capture, Device, Error};
 use std::thread;
-
-#[derive(Debug, Clone)]
-pub struct PacketData {
-    pub timestamp_sec: i64,
-    pub timestamp_usec: i64,
-    pub length: u32,
-    pub payload: Vec<u8>,
-}
 
 pub fn start_capture(tx: Sender<PacketData>) {
     thread::spawn(move || {

@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 pcap = "2.2"
 crossbeam-channel = "0.5"
-
+etherparse = "0.14"
