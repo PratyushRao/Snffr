@@ -5,10 +5,9 @@ use std::thread;
 
 pub fn start_capture(tx: Sender<PacketData>) {
     thread::spawn(move || {
-        println!("[*] Searching network interfaces (Linux)...");
+        println!("[*] Searching network interfaces...");
 
-        let devices = Device::list()
-            .expect("Failed to fetch interfaces");
+        let devices = Device::list().expect("Failed to fetch interfaces");
 
         if devices.is_empty() {
             panic!("No network adapters found");
@@ -18,13 +17,10 @@ pub fn start_capture(tx: Sender<PacketData>) {
             .into_iter()
             .find(|d| {
                 !d.flags.is_loopback() && d.flags.is_up() && d.flags.is_running()
-            })
+})
             .expect("No suitable active non-loopback adapter found");
 
-        println!(
-            "[*] Starting capture on: {}",
-            device.name
-        );
+        println!("[*] Starting capture on: {}", device.name);
 
         let mut cap = Capture::from_device(device)
             .unwrap()
@@ -52,12 +48,8 @@ pub fn start_capture(tx: Sender<PacketData>) {
                         break;
                     }
                 }
-                Err(Error::TimeoutExpired) => {
-                    continue;
-                }
-                Err(e) => {
-                    eprintln!("Capture error: {:?}", e);
-                }
+                Err(Error::TimeoutExpired) => { continue; }
+                Err(e) => { eprintln!("Capture error: {:?}", e); }
             }
         }
     });

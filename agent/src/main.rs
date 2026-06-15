@@ -21,7 +21,6 @@ fn main() {
 
     println!("[*] Snffr agent started. Press Ctrl+C to stop.");
 
-    // Processing thread
     let _parser_handle = thread::spawn(move || {
         while let Ok(data) = rx.recv() {
             if let Some(parsed) = parser::parse_packet(data) {

@@ -1,4 +1,4 @@
-# snffr 🛡️
+# snffr
 ### **High-Performance Distributed IDS & Autonomous Response System**
 
 `snffr` is a distributed security tool designed to sniff network traffic at the edge, analyze it centrally, and respond to threats automatically. By separating the high-speed capture (Rust) from the central management (Go), `snffr` can scale across massive infrastructures.

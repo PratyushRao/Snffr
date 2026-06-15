@@ -8,8 +8,7 @@ pub fn start_capture(tx: Sender<PacketData>) {
 
         println!("[*] Searching network interfaces...");
 
-        let devices = Device::list()
-            .expect("Failed to fetch interfaces");
+        let devices = Device::list().expect("Failed to fetch interfaces");
 
         if devices.is_empty() {
             panic!("No network adapters found");
@@ -20,15 +19,10 @@ pub fn start_capture(tx: Sender<PacketData>) {
             .find(|d| {
                 d.desc
                     .as_ref()
-                    .map(|s| {
-                        s.contains("Wi-Fi")
-                        || s.contains("Ethernet")
-                    })
+                    .map(|s| {s.contains("Wi-Fi") || s.contains("Ethernet")})
                     .unwrap_or(false)
             })
-            .expect(
-                "No suitable Wi-Fi/Ethernet adapter found"
-            );
+            .expect("No suitable Wi-Fi/Ethernet adapter found");
 
         println!(
             "[*] Starting capture on: {}",
@@ -46,51 +40,31 @@ pub fn start_capture(tx: Sender<PacketData>) {
             .open()
             .expect("Failed to open interface");
 
-        cap.filter(
-            "tcp or udp or icmp",
-            true
-        )
-        .expect("Failed to apply BPF filter");
+        cap.filter("tcp or udp or icmp", true).expect("Failed to apply BPF filter");
 
         loop {
-
             match cap.next_packet() {
-
                 Ok(packet) => {
-
                     let data = PacketData {
-
                         timestamp_sec:
                             packet.header.ts.tv_sec,
-
                         timestamp_usec:
                             packet.header.ts.tv_usec,
-
                         length:
                             packet.header.len,
-
                         payload:
                             packet.data.to_vec(),
                     };
 
                     if tx.send(data).is_err() {
-                        eprintln!(
-                            "Capture channel closed"
-                        );
+                        eprintln!("Capture channel closed");
                         break;
                     }
                 }
 
-                Err(Error::TimeoutExpired) => {
-                    continue;
-                }
+                Err(Error::TimeoutExpired) => { continue; }
 
-                Err(e) => {
-                    eprintln!(
-                        "Capture error: {:?}",
-                        e
-                    );
-                }
+                Err(e) => { eprintln!("Capture error: {:?}", e); }
             }
         }
     });
