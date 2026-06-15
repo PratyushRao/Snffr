@@ -34,6 +34,7 @@ message ActionCommand {
   string target_ip = 2;
   string reason = 3;
   uint32 duration_seconds = 4; // How long to keep the block active
+  uint32 rate_limit_pps = 5;    // Max packets per second (for RATE_LIMIT)
 }
 
 // --- SERVICES ---

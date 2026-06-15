@@ -1,4 +1,8 @@
 fn main() {
+    tonic_build::configure()
+        .compile_protos(&["../proto/snffr.proto"], &["../proto"])
+        .expect("Failed to compile protos");
+
     #[cfg(target_os = "windows")]
     {
         println!(
