@@ -1,7 +1,7 @@
 # snffr
 ### **High-Performance Distributed IDS & Autonomous Response System**
 
-`snffr` is a distributed security tool designed to sniff network traffic at the edge, analyze it centrally, and respond to threats automatically. By separating the high-speed capture (Rust) from the central management (Go), `snffr` can scale across massive infrastructures.
+`snffr` is a distributed security tool designed to sniff network traffic at the edge, analyze it centrally, and respond to threats automatically.
 
 ## The Stack
 - **Agents (Rust):** Low-level packet capture using `libpcap`. Maximum speed, zero memory leaks.
@@ -16,7 +16,7 @@
 4. **Respond:** If a rule is triggered, the Manager sends a `BLOCK` signal. The Agent then executes a local `iptables` command to drop all future traffic from that IP.
 5. **Visualize:** All activity is streamed live to the ReactTS dashboard for the admin.
 
-## 🏁 Quick Start
+## Quick Start
 1. **Prerequisites:** Linux (for libpcap), Docker, and Docker Compose.
 2. **Build and Run:**
    ```bash

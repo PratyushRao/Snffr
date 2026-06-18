@@ -5,10 +5,10 @@ use tokio::time::{sleep, Duration};
 
 pub async fn handle_command(cmd: ActionCommand) {
     match cmd.action() {
-        ActionType::BLOCK => {
+        ActionType::Block => {
             block_ip(&cmd.target_ip, cmd.duration_seconds).await;
         }
-        ActionType::RATE_LIMIT => {
+        ActionType::RateLimit => {
             #[cfg(target_os = "linux")]
             rate_limit_ip_linux(&cmd.target_ip, cmd.duration_seconds, cmd.rate_limit_pps).await;
             
