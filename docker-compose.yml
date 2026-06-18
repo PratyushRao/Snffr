@@ -1,0 +1,32 @@
+services:
+  manager:
+    build:
+      context: ./manager
+      dockerfile: Dockerfile
+    container_name: snffr-manager
+    ports:
+      - "50051:50051"
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    container_name: snffr-agent
+    # Run the agent in host networking mode so it can capture host packet traffic
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+    depends_on:
+      - manager
+
+  # dashboard:
+  #   build:
+  #     context: ./dashboard
+  #     dockerfile: Dockerfile
+  #   container_name: snffr-dashboard
+  #   ports:
+  #     - "3000:3000"
+  #   restart: unless-stopped
