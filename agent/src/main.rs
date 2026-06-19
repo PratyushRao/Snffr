@@ -30,10 +30,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("[*] Snffr agent started. Press Ctrl+C to stop.");
 
-    // The Bridge: Async channel to send reports to the gRPC task
+    // send reports to the gRPC task
     let (tx_report, rx_report) = tokio::sync::mpsc::channel::<PacketReport>(1000);
 
-    // Processing thread: Sync -> Bridge
+    // Sync -> Bridge
     let _parser_handle = thread::spawn(move || {
         while let Ok(data) = rx.recv() {
             if let Some(parsed) = parser::parse_packet(data) {
@@ -52,7 +52,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }),
                 };
 
-                // Bridge to async task
                 if let Err(e) = tx_report.blocking_send(report) {
                     eprintln!("Failed to send to gRPC task: {}", e);
                 }
@@ -97,7 +96,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Keep the main thread alive
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
     }
