@@ -1,0 +1,41 @@
+rules:
+  - id: "malicious-payload-sig"
+    name: "Malicious String Payload Match"
+    protocol: "TCP"
+    payload_string: "ATTACK_SIGNATURE"
+    action: "BLOCK"
+    duration: 600
+    reason: "Matched known attack payload signature"
+
+  - id: "ssh-bruteforce"
+    name: "SSH Bruteforce Detection"
+    protocol: "TCP"
+    dst_port: 22
+    action: "BLOCK"
+    duration: 300
+    reason: "Too many connections to SSH port 22"
+    threshold:
+      packets: 5
+      window_seconds: 10
+
+  - id: "icmp-flood"
+    name: "ICMP Ping Flood Detection"
+    protocol: "ICMPv4"
+    action: "BLOCK"
+    duration: 120
+    reason: "ICMP flood detected from source IP"
+    threshold:
+      packets: 10
+      window_seconds: 5
+
+  - id: "dns-rate-limit"
+    name: "DNS Query Rate Limit"
+    protocol: "UDP"
+    dst_port: 53
+    action: "RATE_LIMIT"
+    rate_limit_pps: 10
+    duration: 60
+    reason: "High UDP DNS traffic threshold exceeded"
+    threshold:
+      packets: 20
+      window_seconds: 2

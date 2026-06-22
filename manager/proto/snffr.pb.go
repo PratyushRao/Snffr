@@ -187,6 +187,7 @@ type ActionCommand struct {
 	TargetIp        string                   `protobuf:"bytes,2,opt,name=target_ip,json=targetIp,proto3" json:"target_ip,omitempty"`
 	Reason          string                   `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	DurationSeconds uint32                   `protobuf:"varint,4,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"` // How long to keep the block active
+	RateLimitPps    uint32                   `protobuf:"varint,5,opt,name=rate_limit_pps,json=rateLimitPps,proto3" json:"rate_limit_pps,omitempty"`        // Max packets per second (for RATE_LIMIT)
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -249,6 +250,13 @@ func (x *ActionCommand) GetDurationSeconds() uint32 {
 	return 0
 }
 
+func (x *ActionCommand) GetRateLimitPps() uint32 {
+	if x != nil {
+		return x.RateLimitPps
+	}
+	return 0
+}
+
 var File_snffr_proto protoreflect.FileDescriptor
 
 const file_snffr_proto_rawDesc = "" +
@@ -263,12 +271,13 @@ const file_snffr_proto_rawDesc = "" +
 	"\bprotocol\x18\x06 \x01(\tR\bprotocol\x12\x16\n" +
 	"\x06length\x18\a \x01(\rR\x06length\x12!\n" +
 	"\fpayload_peek\x18\b \x01(\fR\vpayloadPeek\x128\n" +
-	"\ttimestamp\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xdc\x01\n" +
+	"\ttimestamp\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x82\x02\n" +
 	"\rActionCommand\x127\n" +
 	"\x06action\x18\x01 \x01(\x0e2\x1f.snffr.ActionCommand.ActionTypeR\x06action\x12\x1b\n" +
 	"\ttarget_ip\x18\x02 \x01(\tR\btargetIp\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x12)\n" +
-	"\x10duration_seconds\x18\x04 \x01(\rR\x0fdurationSeconds\"2\n" +
+	"\x10duration_seconds\x18\x04 \x01(\rR\x0fdurationSeconds\x12$\n" +
+	"\x0erate_limit_pps\x18\x05 \x01(\rR\frateLimitPps\"2\n" +
 	"\n" +
 	"ActionType\x12\t\n" +
 	"\x05BLOCK\x10\x00\x12\x0e\n" +
