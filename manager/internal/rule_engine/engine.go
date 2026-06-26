@@ -5,7 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,25 +24,30 @@ type Threshold struct {
 }
 
 type Rule struct {
-	ID            string     `yaml:"id"`
-	Name          string     `yaml:"name"`
-	Protocol      string     `yaml:"protocol,omitempty"`
-	SrcIP         string     `yaml:"src_ip,omitempty"`
-	DstIP         string     `yaml:"dst_ip,omitempty"`
-	SrcPort       int        `yaml:"src_port,omitempty"`
-	DstPort       int        `yaml:"dst_port,omitempty"`
-	PayloadHex    string     `yaml:"payload_hex,omitempty"`
-	PayloadString string     `yaml:"payload_string,omitempty"`
-	Action        string     `yaml:"action"` // BLOCK, RATE_LIMIT, ALLOW
-	Duration      uint32     `yaml:"duration"`
-	RateLimitPPS  uint32     `yaml:"rate_limit_pps"`
-	Reason        string     `yaml:"reason"`
-	Threshold     *Threshold `yaml:"threshold,omitempty"`
+	ID            string         `yaml:"id"`
+	Name          string         `yaml:"name"`
+	Protocol      string         `yaml:"protocol,omitempty"`
+	SrcIP         string         `yaml:"src_ip,omitempty"`
+	DstIP         string         `yaml:"dst_ip,omitempty"`
+	SrcPort       int            `yaml:"src_port,omitempty"`
+	DstPort       int            `yaml:"dst_port,omitempty"`
+	SrcPortRange  string         `yaml:"src_port_range,omitempty"`
+	DstPortRange  string         `yaml:"dst_port_range,omitempty"`
+	PayloadHex    string         `yaml:"payload_hex,omitempty"`
+	PayloadString string         `yaml:"payload_string,omitempty"`
+	PayloadRegex  string         `yaml:"payload_regex,omitempty"`
+	compiledRegex *regexp.Regexp // Unexported, compiled during LoadRules
+	Action        string         `yaml:"action"` // BLOCK, RATE_LIMIT, ALLOW
+	Duration      uint32         `yaml:"duration"`
+	RateLimitPPS  uint32         `yaml:"rate_limit_pps"`
+	Reason        string         `yaml:"reason"`
+	Threshold     *Threshold     `yaml:"threshold,omitempty"`
 }
 
 type RuleEngine struct {
-	rules []Rule
-	mu    sync.Mutex
+	rules    []Rule
+	mu       sync.Mutex
+	watching bool
 	// stateful tracking: ruleID -> srcIP -> list of packet timestamps
 	history map[string]map[string][]time.Time
 }
@@ -49,6 +57,34 @@ func NewRuleEngine() *RuleEngine {
 		rules:   make([]Rule, 0),
 		history: make(map[string]map[string][]time.Time),
 	}
+}
+
+func (re *RuleEngine) watchRules(path string) {
+	go func() {
+		var lastModTime time.Time
+		if info, err := os.Stat(path); err == nil {
+			lastModTime = info.ModTime()
+		}
+
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			info, err := os.Stat(path)
+			if err != nil {
+				continue
+			}
+
+			if info.ModTime().After(lastModTime) {
+				log.Printf("[Rule Engine] Rules file modification detected. Reloading rules...")
+				if err := re.LoadRules(path); err != nil {
+					log.Printf("[Rule Engine] Error reloading rules: %v\n", err)
+				} else {
+					lastModTime = info.ModTime()
+				}
+			}
+		}
+	}()
 }
 
 func (re *RuleEngine) LoadRules(path string) error {
@@ -68,6 +104,17 @@ func (re *RuleEngine) LoadRules(path string) error {
 		return fmt.Errorf("failed to unmarshal rules YAML: %w", err)
 	}
 
+	// Compile regex for rules
+	for i := range config.Rules {
+		if config.Rules[i].PayloadRegex != "" {
+			r, err := regexp.Compile(config.Rules[i].PayloadRegex)
+			if err != nil {
+				return fmt.Errorf("failed to compile regex for rule %s: %w", config.Rules[i].ID, err)
+			}
+			config.Rules[i].compiledRegex = r
+		}
+	}
+
 	re.rules = config.Rules
 	log.Printf("[Rule Engine] Loaded %d rules successfully from %s\n", len(re.rules), path)
 	for _, r := range re.rules {
@@ -77,29 +124,108 @@ func (re *RuleEngine) LoadRules(path string) error {
 	// reset stateful history on reload
 	re.history = make(map[string]map[string][]time.Time)
 
+	// If not watching yet, start watching rules file
+	if !re.watching {
+		re.watching = true
+		re.watchRules(path)
+	}
+
 	return nil
 }
 
-// Match a given report to the rule criteria
-func (r *Rule) Match(report *proto.PacketReport) bool {
-	// If [___] is specified -> check if the report matches the rule criteria
-	if r.Protocol != "" && !strings.EqualFold(report.Protocol, r.Protocol) {
-		return false
+func matchIP(ruleIP, packetIP string) bool {
+	if ruleIP == "" {
+		return true
 	}
-	if r.SrcIP != "" && report.SrcIp != r.SrcIP {
-		return false
-	}
-	if r.DstIP != "" && report.DstIp != r.DstIP {
-		return false
-	}
-	if r.SrcPort != 0 && int(report.SrcPort) != r.SrcPort {
-		return false
-	}
-	if r.DstPort != 0 && int(report.DstPort) != r.DstPort {
+	if packetIP == "" {
 		return false
 	}
 
-	// If [___] is specified -> check if a peek contains it
+	// Check if ruleIP is a CIDR block
+	if strings.Contains(ruleIP, "/") {
+		_, ipnet, err := net.ParseCIDR(ruleIP)
+		if err == nil {
+			parsedPacketIP := net.ParseIP(packetIP)
+			if parsedPacketIP != nil && ipnet.Contains(parsedPacketIP) {
+				return true
+			}
+			return false
+		}
+	}
+
+	// Direct IP check
+	rIP := net.ParseIP(ruleIP)
+	pIP := net.ParseIP(packetIP)
+	if rIP != nil && pIP != nil {
+		return rIP.Equal(pIP)
+	}
+
+	return ruleIP == packetIP
+}
+
+func matchPort(rulePort int, rulePortRange string, packetPort int) bool {
+	if rulePort == 0 && rulePortRange == "" {
+		return true
+	}
+
+	if rulePort != 0 {
+		return packetPort == rulePort
+	}
+
+	if rulePortRange != "" {
+		// list of ports: e.g. "80,443"
+		if strings.Contains(rulePortRange, ",") {
+			parts := strings.Split(rulePortRange, ",")
+			for _, part := range parts {
+				p, err := strconv.Atoi(strings.TrimSpace(part))
+				if err == nil && p == packetPort {
+					return true
+				}
+			}
+			return false
+		}
+
+		// port range: e.g. "1000-2000"
+		if strings.Contains(rulePortRange, "-") {
+			parts := strings.Split(rulePortRange, "-")
+			if len(parts) == 2 {
+				start, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+				end, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+				if err1 == nil && err2 == nil {
+					return packetPort >= start && packetPort <= end
+				}
+			}
+			return false
+		}
+
+		p, err := strconv.Atoi(strings.TrimSpace(rulePortRange))
+		if err == nil {
+			return p == packetPort
+		}
+	}
+
+	return false
+}
+
+// match a report to the rule criteria
+func (r *Rule) Match(report *proto.PacketReport) bool {
+	if r.Protocol != "" && !strings.EqualFold(report.Protocol, r.Protocol) {
+		return false
+	}
+	if !matchIP(r.SrcIP, report.SrcIp) {
+		return false
+	}
+	if !matchIP(r.DstIP, report.DstIp) {
+		return false
+	}
+	if !matchPort(r.SrcPort, r.SrcPortRange, int(report.SrcPort)) {
+		return false
+	}
+	if !matchPort(r.DstPort, r.DstPortRange, int(report.DstPort)) {
+		return false
+	}
+
+	// check payload matches
 	if r.PayloadHex != "" {
 		hexBytes, err := hex.DecodeString(r.PayloadHex)
 		if err != nil {
@@ -114,10 +240,15 @@ func (r *Rule) Match(report *proto.PacketReport) bool {
 			return false
 		}
 	}
+	if r.compiledRegex != nil {
+		if !r.compiledRegex.Match(report.PayloadPeek) {
+			return false
+		}
+	}
 	return true
 }
 
-// Evaluate a report against all loaded rules
+// evaluate a report against all loaded rules
 func (re *RuleEngine) Evaluate(report *proto.PacketReport) (*proto.ActionCommand, bool) {
 	re.mu.Lock()
 	defer re.mu.Unlock()
@@ -127,7 +258,6 @@ func (re *RuleEngine) Evaluate(report *proto.PacketReport) (*proto.ActionCommand
 			continue
 		}
 
-		// Check stateful threshold if specified
 		if rule.Threshold != nil {
 			if rule.Threshold.Packets <= 0 || rule.Threshold.WindowSeconds <= 0 {
 				continue
@@ -144,7 +274,7 @@ func (re *RuleEngine) Evaluate(report *proto.PacketReport) (*proto.ActionCommand
 			// Append current packet timestamp
 			re.history[ruleID][srcIP] = append(re.history[ruleID][srcIP], now)
 
-			// Clear up old timestamps
+			// clear up old timestamps
 			cutoff := now.Add(-time.Duration(rule.Threshold.WindowSeconds) * time.Second)
 			validTimes := make([]time.Time, 0, len(re.history[ruleID][srcIP]))
 			for _, t := range re.history[ruleID][srcIP] {
@@ -154,9 +284,9 @@ func (re *RuleEngine) Evaluate(report *proto.PacketReport) (*proto.ActionCommand
 			}
 			re.history[ruleID][srcIP] = validTimes
 
-			// If threshold exceeded -> trigger some action
+			// if threshold exceeded -> trigger some action
 			if len(validTimes) >= rule.Threshold.Packets {
-				// Clear history for this IP to prevent consecutive triggers
+				// clear history for this IP to prevent consecutive triggers
 				re.history[ruleID][srcIP] = nil
 
 				actionType := proto.ActionCommand_BLOCK

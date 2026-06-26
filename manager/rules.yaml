@@ -39,3 +39,32 @@ rules:
     threshold:
       packets: 20
       window_seconds: 2
+
+  - id: "internal-subnet-restrict"
+    name: "Block Specific Subnet"
+    protocol: "TCP"
+    src_ip: "192.168.100.0/24"
+    dst_port_range: "80,443"
+    action: "BLOCK"
+    duration: 3600
+    reason: "Unauthorized access attempt from restricted internal subnet"
+
+  - id: "ephemeral-port-range-scan"
+    name: "Block Ephemeral Port Range Intrusion"
+    protocol: "UDP"
+    src_port_range: "49152-65535"
+    action: "RATE_LIMIT"
+    rate_limit_pps: 5
+    duration: 120
+    reason: "High rate UDP scanning from ephemeral source ports"
+    threshold:
+      packets: 15
+      window_seconds: 5
+
+  - id: "malicious-regex-payload"
+    name: "Malicious Payload Regex Match"
+    protocol: "TCP"
+    payload_regex: "(?i)union.*select.*from"
+    action: "BLOCK"
+    duration: 86400
+    reason: "SQL injection payload signature detected"
