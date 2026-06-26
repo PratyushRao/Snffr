@@ -54,12 +54,13 @@ async fn block_ip(ip: &str, duration: u32) {
             .status();
 
         if duration > 0 {
+            let ip_clone = ip.to_string();
             tokio::spawn(async move {
                 sleep(Duration::from_secs(duration as u64)).await;
                 let _ = Command::new("netsh")
                     .args(&["advfirewall", "firewall", "delete", "rule", &format!("name={}", rule_name)])
                     .status();
-                println!("[*] Unblocked IP: {}", ip);
+                println!("[*] Unblocked IP: {}", ip_clone);
             });
         }
     }

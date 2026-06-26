@@ -47,9 +47,9 @@ pub fn start_capture(tx: Sender<PacketData>) {
                 Ok(packet) => {
                     let data = PacketData {
                         timestamp_sec:
-                            packet.header.ts.tv_sec,
+                            packet.header.ts.tv_sec as i64,
                         timestamp_usec:
-                            packet.header.ts.tv_usec,
+                            packet.header.ts.tv_usec as i64,
                         length:
                             packet.header.len,
                         payload:
