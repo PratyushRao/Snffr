@@ -24,6 +24,19 @@ async fn block_ip(ip: &str, duration: u32) {
 
     #[cfg(target_os = "linux")]
     {
+        // Try eBPF/XDP block first
+        let xdp_blocked = if crate::ebpf_loader::is_xdp_active() {
+            crate::ebpf_loader::block_ip(ip)
+        } else {
+            false
+        };
+
+        if xdp_blocked {
+            println!("[+] IP {} blocked in kernel-space via XDP Map", ip);
+        } else {
+            println!("[*] XDP not active or failed, using/falling back to iptables");
+        }
+
         let _ = Command::new("iptables")
             .args(&["-A", "INPUT", "-s", ip, "-j", "DROP"])
             .status();
@@ -32,6 +45,11 @@ async fn block_ip(ip: &str, duration: u32) {
             let ip_clone = ip.to_string();
             tokio::spawn(async move {
                 sleep(Duration::from_secs(duration as u64)).await;
+                
+                if crate::ebpf_loader::is_xdp_active() {
+                    crate::ebpf_loader::unblock_ip(&ip_clone);
+                }
+
                 let _ = Command::new("iptables")
                     .args(&["-D", "INPUT", "-s", &ip_clone, "-j", "DROP"])
                     .status();

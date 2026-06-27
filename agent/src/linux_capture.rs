@@ -3,26 +3,29 @@ use crossbeam_channel::Sender;
 use pcap::{Capture, Device, Error};
 use std::thread;
 
-pub fn start_capture(tx: Sender<PacketData>) {
+pub fn start_capture(tx: Sender<PacketData>) -> String {
+    println!("[*] Searching network interfaces...");
+
+    let devices = Device::list().expect("Failed to fetch interfaces");
+
+    if devices.is_empty() {
+        panic!("No network adapters found");
+    }
+
+    let device = devices
+        .into_iter()
+        .find(|d| {
+            !d.flags.is_loopback() && d.flags.is_up() && d.flags.is_running()
+        })
+        .expect("No suitable active non-loopback adapter found");
+
+    let device_name = device.name.clone();
+    let device_clone = device.clone();
+
     thread::spawn(move || {
-        println!("[*] Searching network interfaces...");
+        println!("[*] Starting capture on: {}", device_clone.name);
 
-        let devices = Device::list().expect("Failed to fetch interfaces");
-
-        if devices.is_empty() {
-            panic!("No network adapters found");
-        }
-
-        let device = devices
-            .into_iter()
-            .find(|d| {
-                !d.flags.is_loopback() && d.flags.is_up() && d.flags.is_running()
-})
-            .expect("No suitable active non-loopback adapter found");
-
-        println!("[*] Starting capture on: {}", device.name);
-
-        let mut cap = Capture::from_device(device)
+        let mut cap = Capture::from_device(device_clone)
             .unwrap()
             .promisc(true)
             .snaplen(65535)
@@ -53,4 +56,6 @@ pub fn start_capture(tx: Sender<PacketData>) {
             }
         }
     });
+
+    device_name
 }

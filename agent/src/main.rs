@@ -1,6 +1,7 @@
 mod types;
 mod parser;
 mod responder;
+mod ebpf_loader;
 
 #[cfg(target_os = "windows")]
 mod win_capture;
@@ -23,12 +24,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tx, rx) = unbounded();
 
     #[cfg(target_os = "windows")]
-    win_capture::start_capture(tx);
+    let _interface = win_capture::start_capture(tx);
 
     #[cfg(target_os = "linux")]
-    linux_capture::start_capture(tx);
+    let interface = linux_capture::start_capture(tx);
+
+    // Try loading XDP program on Linux
+    #[cfg(target_os = "linux")]
+    {
+        // this needs root/sudo.
+        if !ebpf_loader::load_xdp(&interface) {
+            println!("[!] Warning: Kernel-level XDP bypass could not be initialized. Operating in standard user-space capture mode.");
+        }
+    }
 
     println!("[*] Snffr agent started. Press Ctrl+C to stop.");
+
+    // Graceful shutdown XDP drop
+    #[cfg(target_os = "linux")]
+    let interface_clone = interface.clone();
+    
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("failed to listen for event");
+        println!("\n[*] Shutting down Agent...");
+        #[cfg(target_os = "linux")]
+        {
+            ebpf_loader::unload_xdp(&interface_clone);
+        }
+        std::process::exit(0);
+    });
 
     // send reports to the gRPC task
     let (tx_report, rx_report) = tokio::sync::mpsc::channel::<PacketReport>(1000);
