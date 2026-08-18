@@ -19,7 +19,7 @@ pub fn load_xdp(interface: &str) -> bool {
     // Clean up crashed run artefacts
     let _ = Command::new("bpftool").args(&["net", "detach", "xdp", "dev", interface]).status();
     let _ = Command::new("bpftool").args(&["net", "detach", "xdpgeneric", "dev", interface]).status();
-    let _ = Command::new("rm").args(&["-f", "/sys/fs/bpf/snffr_prog", "/sys/fs/bpf/blocked_ips"]).status();
+    let _ = Command::new("rm").args(&["-f", "/sys/fs/bpf/snffr_prog", "/sys/fs/bpf/blocked_ips", "/sys/fs/bpf/blocked_ips_v6", "/sys/fs/bpf/rate_limit_ips", "/sys/fs/bpf/xdp_stats"]).status();
 
     // find where xdp_block.o is
     let mut bpf_obj = "src/ebpf/xdp_block.o".to_string();
@@ -86,7 +86,7 @@ pub fn load_xdp(interface: &str) -> bool {
 
     if !attached {
         eprintln!("[!] Failed to attach XDP program to network interface");
-        let _ = Command::new("rm").args(&["-f", "/sys/fs/bpf/snffr_prog", "/sys/fs/bpf/blocked_ips"]).status();
+        let _ = Command::new("rm").args(&["-f", "/sys/fs/bpf/snffr_prog", "/sys/fs/bpf/blocked_ips", "/sys/fs/bpf/blocked_ips_v6", "/sys/fs/bpf/rate_limit_ips", "/sys/fs/bpf/xdp_stats"]).status();
         return false;
     }
 
@@ -102,7 +102,7 @@ pub fn unload_xdp(interface: &str) {
     println!("[*] Unloading XDP program from interface: {}", interface);
     let _ = Command::new("bpftool").args(&["net", "detach", "xdp", "dev", interface]).status();
     let _ = Command::new("bpftool").args(&["net", "detach", "xdpgeneric", "dev", interface]).status();
-    let _ = Command::new("rm").args(&["-f", "/sys/fs/bpf/snffr_prog", "/sys/fs/bpf/blocked_ips"]).status();
+    let _ = Command::new("rm").args(&["-f", "/sys/fs/bpf/snffr_prog", "/sys/fs/bpf/blocked_ips", "/sys/fs/bpf/blocked_ips_v6", "/sys/fs/bpf/rate_limit_ips", "/sys/fs/bpf/xdp_stats"]).status();
     set_xdp_active(false);
 }
 
