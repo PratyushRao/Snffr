@@ -127,7 +127,4 @@ When the manager identifies malicious activity, it streams an `ActionCommand` co
 ---
 
 ## Roadmap
-- [ ] **Configurable Rule Engine:** Add support for Snort-like packet signatures.
-- [ ] **eBPF Integration:** Implement XDP/eBPF kernel-level capture bypasses for ultra-low overhead on Linux.
-- [ ] **Dashboard TUI:** Terminal UI interface on the manager to watch real-time packet ingress and alerts.
 - [ ] **Dynamic Attack Graphing:** Visualize attack vectors in dashboard view.
