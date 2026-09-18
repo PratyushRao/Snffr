@@ -7,6 +7,7 @@ import (
 
 	"snffr/manager/internal/aggregator"
 	"snffr/manager/internal/decision"
+	"snffr/manager/internal/events"
 	"snffr/manager/internal/rule_engine"
 	"snffr/manager/proto"
 
@@ -76,7 +77,7 @@ func NewServer() *Server {
 // Monitor is the bidirectional streaming RPC handler.
 // One goroutine per connected agent calls this method.
 func (s *Server) Monitor(stream grpc.BidiStreamingServer[proto.PacketReport, proto.ActionCommand]) error {
-	log.Println("[gRPC Server] New agent stream connection established")
+	events.Publish(events.LogMessage{Message: "New agent stream connection established"})
 
 	// Drain the aggregator's async results channel (time-window expirations)
 	// in a dedicated goroutine for this stream so every flow gets evaluated
@@ -97,32 +98,49 @@ func (s *Server) Monitor(stream grpc.BidiStreamingServer[proto.PacketReport, pro
 	}()
 	defer close(stopDrain)
 
+	agentConnected := false
+	var currentAgentId string
+
 	for {
 		report, err := stream.Recv()
 		if err == io.EOF {
-			log.Println("[gRPC Server] Agent closed the stream")
+			if agentConnected {
+				events.Publish(events.AgentDisconnected{AgentID: currentAgentId})
+			}
+			events.Publish(events.LogMessage{Message: "Agent closed the stream"})
 			return nil
 		}
 		if err != nil {
-			log.Printf("[gRPC Server] Stream read error: %v\n", err)
+			if agentConnected {
+				events.Publish(events.AgentDisconnected{AgentID: currentAgentId})
+			}
+			events.Publish(events.LogMessage{Message: fmt.Sprintf("Stream read error: %v", err)})
 			return err
 		}
 
-		log.Printf("[gRPC Server] Packet: Agent=%s | %s:%d → %s:%d | Proto=%s | Size=%d bytes\n",
-			report.AgentId,
-			report.SrcIp, report.SrcPort,
-			report.DstIp, report.DstPort,
-			report.Protocol,
-			report.Length,
-		)
+		if !agentConnected {
+			currentAgentId = report.AgentId
+			agentConnected = true
+			events.Publish(events.AgentConnected{AgentID: currentAgentId})
+		}
+
+		events.Publish(events.PacketReceived{
+			AgentID:  report.AgentId,
+			Protocol: report.Protocol,
+			Length:   int(report.Length),
+		})
 
 		// ── Path 1: Immediate signature / threshold rules ─────────────────────
 		if cmd, matched := s.ruleEngine.Evaluate(report); matched {
-			log.Printf("[gRPC Server] RULE MATCH: Action=%v | IP=%s | Reason=%s\n",
-				cmd.Action, cmd.TargetIp, cmd.Reason)
+			events.Publish(events.AlertFired{
+				Source:   "Rule",
+				Action:   cmd.Action.String(),
+				TargetIP: cmd.TargetIp,
+				Reason:   cmd.Reason,
+			})
 
 			if err := stream.Send(cmd); err != nil {
-				log.Printf("[gRPC Server] Failed to send rule ActionCommand: %v\n", err)
+				events.Publish(events.LogMessage{Message: fmt.Sprintf("Failed to send rule ActionCommand: %v", err)})
 			}
 		}
 
@@ -142,20 +160,28 @@ func (s *Server) evaluateAndRespond(
 	d, totalRisk, err := decision.EvaluateFlow(result.Features)
 	if err != nil {
 		// Inference failure is non-fatal — log and move on.
-		log.Printf("[gRPC Server] AI inference error for flow %s: %v\n", result.Key, err)
+		events.Publish(events.LogMessage{Message: fmt.Sprintf("AI inference error for flow %s: %v", result.Key, err)})
 		return
 	}
 
-	log.Printf("[gRPC Server] AI EVAL: flow=%s | packets=%d | risk=%d | decision=%s\n",
-		result.Key, result.PacketCount, totalRisk, d)
+	// AI EVAL: flow=...
+	// We could publish a trace event if we wanted, but let's just log it or ignore it if Allow.
+	// For now, if not Allow, it's an alert.
 
 	cmd := decisionToCommand(d, result.SrcIP, totalRisk)
 	if cmd == nil {
 		return // Allow — no action needed
 	}
 
+	events.Publish(events.AlertFired{
+		Source:   "AI",
+		Action:   cmd.Action.String(),
+		TargetIP: cmd.TargetIp,
+		Reason:   cmd.Reason,
+	})
+
 	if err := stream.Send(cmd); err != nil {
-		log.Printf("[gRPC Server] Failed to send AI ActionCommand: %v\n", err)
+		events.Publish(events.LogMessage{Message: fmt.Sprintf("Failed to send AI ActionCommand: %v", err)})
 	}
 }
 

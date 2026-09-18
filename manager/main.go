@@ -1,34 +1,47 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
+	"os"
 
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
 	"google.golang.org/grpc"
 	"snffr/manager/internal/decision"
+	"snffr/manager/internal/events"
 	"snffr/manager/internal/grpc_server"
+	"snffr/manager/internal/tui"
 	"snffr/manager/proto"
 )
 
-func main() {
-	fmt.Println("snffr Manager Initializing...")
+type EventLogWriter struct{}
 
-	// Initialise the AI + Decision engine.
-	// The model path is relative to the working directory inside the container.
+func (w EventLogWriter) Write(p []byte) (n int, err error) {
+	msg := strings.TrimSpace(string(p))
+	if msg != "" {
+		events.Publish(events.LogMessage{Message: msg})
+	}
+	return len(p), nil
+}
+
+func main() {
+	// Redirect standard log to the event bus
+	log.SetOutput(EventLogWriter{})
+	log.SetFlags(0) // Remove date/time since TUI adds it
+
 	const modelPath = "models/ids_model.onnx"
 	if err := decision.Init(modelPath); err != nil {
-		// Non-fatal on startup: the server can still apply rule-based decisions
-		// even if the ONNX Runtime library is unavailable. The error is logged
-		// prominently so operators can see that AI inference is degraded.
-		log.Printf("[main] WARNING: decision engine initialisation failed: %v", err)
-		log.Printf("[main] The manager will continue without AI inference.")
+		events.Publish(events.LogMessage{Message: "WARNING: decision engine initialisation failed: " + err.Error()})
+		events.Publish(events.LogMessage{Message: "The manager will continue without AI inference."})
 	} else {
-		log.Printf("[main] Decision engine initialised (model: %s)", modelPath)
+		events.Publish(events.LogMessage{Message: "Decision engine initialised (model: " + modelPath + ")"})
 	}
 
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
+		// Fatal error, TUI not started yet
 		log.Fatalf("failed to listen: %v", err)
 	}
 
@@ -36,8 +49,17 @@ func main() {
 	srv := grpc_server.NewServer()
 	proto.RegisterSnifferServiceServer(s, srv)
 
-	fmt.Println("Listening for Agents on port 50051")
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+	go func() {
+		events.Publish(events.LogMessage{Message: "Listening for Agents on port 50051"})
+		if err := s.Serve(lis); err != nil {
+			events.Publish(events.LogMessage{Message: "failed to serve: " + err.Error()})
+		}
+	}()
+
+	// Start Bubbletea TUI
+	p := tea.NewProgram(tui.NewModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	if _, err := p.Run(); err != nil {
+		log.Printf("Alas, there's been an error: %v", err)
+		os.Exit(1)
 	}
 }
