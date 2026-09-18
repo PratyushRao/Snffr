@@ -121,8 +121,8 @@ async fn rate_limit_ip_windows(ip: &str, duration: u32) {
         .args(&[
             "-Command",
             &format!(
-                "New-NetQosPolicy -Name '{}' -IPDstAddrMatchCondition '{}' -ThrottleRateActionBitsPerSecond 1000000 -AppPathNameMatchCondition '*'",
-                policy_name, ip
+                "Remove-NetQosPolicy -Name '{}' -Confirm:$false -ErrorAction SilentlyContinue; New-NetQosPolicy -Name '{}' -IPDstPrefixMatchCondition '{}' -ThrottleRateActionBitsPerSecond 1000000 -AppPathNameMatchCondition '*' -ErrorAction SilentlyContinue",
+                policy_name, policy_name, ip
             )
         ])
         .status();
@@ -133,7 +133,7 @@ async fn rate_limit_ip_windows(ip: &str, duration: u32) {
             sleep(Duration::from_secs(duration as u64)).await;
             
             let _ = Command::new("powershell")
-                .args(&["-Command", &format!("Remove-NetQosPolicy -Name '{}' -Confirm:$false", policy_name)])
+                .args(&["-Command", &format!("Remove-NetQosPolicy -Name '{}' -Confirm:$false -ErrorAction SilentlyContinue", policy_name)])
                 .status();
                 
             println!("[*] Removed Windows Rate Limit for IP: {}", ip_clone);
