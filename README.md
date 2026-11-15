@@ -48,6 +48,46 @@ sequenceDiagram
 
 ---
 
+## Detection Models
+
+`snffr` incorporates a hybrid threat detection engine combining deterministic heuristic rule matching with deep learning / statistical inference via ONNX Runtime. The `models/` directory provides four interchangeable ONNX detection models tailored for different deployment environments and performance constraints:
+
+| Model Architecture | Features | Latency (ms/flow) | Throughput (FPS) | Hybrid F1-Score | Hybrid Precision | Primary Focus |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`IDSGAN_model`** *(Default)* | 78 | 0.0067 ms | ~148,000 | **75.21%** | **95.55%** | Production inline intrusion detection & automated blocking |
+| **`GAN_model`** | 68 | 0.0034 ms | ~293,000 | **69.64%** | **95.23%** | Ultra-high-speed core backbone gateways |
+| **`IsolationForest_model`** | 7 | 0.1156 ms | ~8,600 | **2.09%** | **35.98%** | Lightweight edge / IoT baseline anomaly detection |
+| **`LightGBM_model`** | 68 | 0.0444 ms | ~22,500 | **0.03%** | **0.64%** | Structured tabular decision-tree IDS |
+
+### 1. IDSGAN (`models/IDSGAN_model/`) — *Default Production Model*
+- **Architecture:** Generative Adversarial Network designed for robust intrusion detection under adversarial traffic variations.
+- **Input Dimension:** 78 network flow features.
+- **In-Graph Preprocessing:** Includes compiled in-graph numerical stabilization (`sign(x) * log1p(|x|)`) and standardization directly within the ONNX computation graph, eliminating external preprocessing latency.
+- **Detection Profile:** Highest accuracy and precision on unseen data; achieves a **75.21% F1-score** and **95.55% precision** while blocking 2,500 attacks outright with under a 1.9% false-positive block rate.
+- **Recommended For:** Primary inline enterprise traffic inspection and autonomous edge firewall enforcement.
+
+### 2. GAN (`models/GAN_model/`) — *Ultra-High Throughput*
+- **Architecture:** Deep neural network / GAN discriminator evaluating network flow statistics.
+- **Input Dimension:** 68 network flow features (configured with log1p transformation and standardization parameters via `ids_model_metadata.json`).
+- **Detection Profile:** Sub-microsecond inference capability (~0.0034 ms/flow, peaking above 290,000+ flows/sec) with outstanding precision (**95.23% hybrid / 98.11% standalone AI**).
+- **Recommended For:** High-throughput 10Gbps/40Gbps edge routing gateways where latency budgets and compute overhead are strictly limited.
+
+### 3. Isolation Forest (`models/IsolationForest_model/`) — *Lightweight Anomaly Detection*
+- **Architecture:** Unsupervised tree-based anomaly detector (scikit-learn Isolation Forest exported to ONNX).
+- **Input Dimension:** 7 core flow summary features (`Dst Port`, `Flow Duration`, `Tot Fwd Pkts`, `TotLen Fwd Pkts`, `Flow Byts/s`, `Flow Pkts/s`, `Pkt Size Avg`).
+- **Detection Profile:** Extremely low resource footprint and minimal feature extraction overhead; exhibits high specificity (96.69% TNR) but is susceptible to concept drift against modern attack distributions without localized retraining.
+- **Recommended For:** Resource-constrained IoT edge devices and static network baselines.
+
+### 4. LightGBM (`models/LightGBM_model/`) — *Gradient Boosted Decision Trees*
+- **Architecture:** Gradient Boosted Decision Tree (GBDT) ensemble serialized via ONNX.
+- **Input Dimension:** 68 tabular network flow features.
+- **Detection Profile:** Efficient tree-based inference (~0.044 ms/flow) with compact model storage (~1.98 MB); requires localized calibration and feature alignment to adapt across differing network topology distributions.
+- **Recommended For:** Environments utilizing domain-specific retraining pipelines with tabular structured features.
+
+> **Note:** To switch the active model in the Go manager, copy the desired model into `manager/models/ids_model.onnx` (along with any `.data` files). For complete benchmarking methodology, confusion matrices, and cross-dataset evaluations, refer to [results.md](results.md).
+
+---
+
 ## Repository Structure
 
 ```tree
@@ -62,8 +102,14 @@ sequenceDiagram
 │   └── Dockerfile          # Multi-stage container for Rust agent
 ├── manager/                # Go Orchestrator & Central Manager
 │   ├── internal/           # Manager gRPC server & routing internals
+│   ├── models/             # Active ONNX model loaded by manager
 │   ├── main.go             # Entrypoint for gRPC listener
 │   └── Dockerfile          # Multi-stage container for Go manager
+├── models/                 # Pretrained ONNX Detection Models
+│   ├── IDSGAN_model/       # Default: 78-feature GAN with in-graph scaling
+│   ├── GAN_model/          # 68-feature ultra-fast GAN model
+│   ├── IsolationForest_model/# 7-feature anomaly detection baseline
+│   └── LightGBM_model/     # 68-feature gradient-boosted decision tree
 ├── proto/                  # Protobuf contract definitions
 │   └── snffr.proto         # PacketReport & ActionCommand schemas
 ├── tests/                  # Threat testing & simulation utils
