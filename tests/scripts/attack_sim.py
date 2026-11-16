@@ -3,6 +3,7 @@ import socket
 import time
 import argparse
 import subprocess
+import sys
 
 class MetricsTracker:
     def __init__(self, target_ip):
@@ -120,7 +121,8 @@ def simulate_ping_flood(target_ip, metrics=None):
     pings_sent = 0
     for i in range(12):
         try:
-            subprocess.Popen(["ping", "-c", "1", "-W", "1", target_ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            cmd = ["ping", "-n", "1", "-w", "1000", target_ip] if sys.platform == "win32" else ["ping", "-c", "1", "-W", "1", target_ip]
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             pings_sent += 1
             time.sleep(0.1)
         except Exception as e:
