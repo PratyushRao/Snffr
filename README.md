@@ -170,7 +170,3 @@ When the manager identifies malicious activity, it streams an `ActionCommand` co
 | **Windows** | **BLOCK** | `netsh advfirewall firewall add rule ...` | Async task runs `delete rule` |
 | **Windows** | **RATE_LIMIT** | `New-NetQosPolicy -ThrottleRateActionBitsPerSecond ...` | Async task runs `Remove-NetQosPolicy` |
 
----
-
-## Roadmap
-- [ ] **Dynamic Attack Graphing:** Visualize attack vectors in dashboard view.
